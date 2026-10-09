@@ -21,7 +21,7 @@ jobs:
       - name: Prepare website
         run: |
           mkdir -p public
-          cp index.html cloud-config.js public/
+          cp index.html cloud-config.js courses.js courses.css public/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
