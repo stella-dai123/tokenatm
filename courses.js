@@ -1,100 +1,31 @@
-// Course records share the existing local persistence and private cloud sync.
-let studyMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-let studySelectedDay = day();
-let studyEditingId = null;
-const courseDialog = document.createElement('dialog');
-courseDialog.id = 'course-editor';
-courseDialog.innerHTML = `<form id="course-form"><h2 id="course-form-title">添加课程</h2><label for="course-name">课程名称</label><input id="course-name" required maxlength="100" placeholder="例如：生理学"><label for="course-exam">考试日期（可选）</label><input id="course-exam" type="date" min="0001-01-01" max="9999-12-31"><p class="course-dialog-note">设置日期后，日历和倒计时会自动更新。提醒显示在网页内。</p><div class="actions"><button type="button" class="outline" id="course-cancel">取消</button><button type="submit" class="primary">保存课程</button></div></form>`;
-document.body.appendChild(courseDialog);
-const courseRows = () => state.courses || [];
-const dateOrdinal = value => Date.parse(value + 'T00:00:00Z') / 86400000;
-const examDays = value => dateOrdinal(value) - dateOrdinal(day());
-function countdownLabel(date) {
-  const n = examDays(date);
-  return n > 0 ? `还有 ${n} 天` : n === 0 ? '今天考试' : `已过 ${-n} 天`;
-}
-function dateFor(year, month, date) {
-  return String(year).padStart(4, '0') + '-' + String(month + 1).padStart(2, '0') + '-' + String(date).padStart(2, '0');
-}
-function examItem(course) {
-  const remaining = examDays(course.examDate);
-  return `<div class="exam-item"><div>${esc(course.name)}<small>${esc(course.examDate)}</small></div><span class="countdown ${remaining < 0 ? 'past' : remaining <= 7 ? 'soon' : ''}">${countdownLabel(course.examDate)}</span></div>`;
-}
-function renderCourses() {
-  const courses = courseRows();
-  const upcoming = courses.filter(c => c.examDate && examDays(c.examDate) >= 0).sort((a, b) => a.examDate.localeCompare(b.examDate));
-  const soon = upcoming.filter(c => examDays(c.examDate) <= 7);
-  const completed = courses.reduce((n, c) => n + c.tasks.filter(t => t.done).length, 0);
-  const taskCount = courses.reduce((n, c) => n + c.tasks.length, 0);
-  const year = studyMonth.getFullYear(), month = studyMonth.getMonth();
-  const dates = new Date(year, month + 1, 0).getDate();
-  const offset = (studyMonth.getDay() + 6) % 7;
-  let calendar = ['一', '二', '三', '四', '五', '六', '日'].map(w => `<div class="calendar-weekday">${w}</div>`).join('');
-  calendar += '<div aria-hidden="true"></div>'.repeat(offset);
-  for (let d = 1; d <= dates; d++) {
-    const date = dateFor(year, month, d);
-    const exams = courses.filter(c => c.examDate === date);
-    calendar += `<button class="calendar-day ${date === day() ? 'today' : ''} ${date === studySelectedDay ? 'selected' : ''} ${exams.length ? 'has-exam' : ''}" data-study-date="${date}" aria-label="${date}${exams.length ? '，考试：' + esc(exams.map(c => c.name).join('、')) : ''}" aria-pressed="${date === studySelectedDay}">${d}${exams.length ? '<span class="calendar-dot"></span>' : '<span style="height:4px"></span>'}</button>`;
-  }
-  const selectedExams = courses.filter(c => c.examDate === studySelectedDay);
-  $('#content').innerHTML = `<div id="study-content"><div class="study-page-heading"><div><h2>这学期，一点一点准备好。</h2><span class="muted">${courses.length} 门课程 · 复习任务已完成 ${completed} / ${taskCount}</span></div><button class="outline" id="course-add">＋ 添加课程</button></div>${soon.length ? `<div class="study-alert">近期考试提醒：${soon.map(c => `${esc(c.name)} · ${countdownLabel(c.examDate)}`).join('；')}</div>` : ''}<div class="study-layout"><section class="study-calendar"><div class="calendar-head"><button class="outline" data-study-month="-1" aria-label="上个月">‹</button><h3>${year} 年 ${month + 1} 月</h3><button class="outline" data-study-month="1" aria-label="下个月">›</button><button class="danger" id="study-today">今天</button></div><div class="calendar-grid">${calendar}</div><div class="calendar-legend">橙色标记：考试日 · 点击日期查看安排</div></section><section class="study-agenda"><h3>${esc(studySelectedDay)} 的考试</h3>${selectedExams.length ? selectedExams.map(examItem).join('') : '<p class="study-empty">这一天没有考试安排。</p>'}<h3 style="margin-top:24px">接下来的考试</h3><div class="agenda-list">${upcoming.length ? upcoming.map(examItem).join('') : '<p class="study-empty">暂无待考考试，给课程设置考试日期吧。</p>'}</div></section></div><div class="study-cards">${courses.map(renderCourseCard).join('')}</div>${courses.length ? '' : '<div class="study-empty">添加第一门课，再把复习目标拆成可以打勾的小任务。</div>'}<p class="muted" style="margin-top:24px">勾选会自动保存；登录后沿用云端同步。考试提醒和倒计时在网页内显示。</p></div>`;
-  $('#course-add').onclick = () => openCourseEditor(null);
-  $('#study-content').onclick = handleStudyClick;
-  $('#study-content').onchange = handleStudyCheck;
-  $('#study-content').onsubmit = handleReviewSubmit;
-}
-function renderCourseCard(course) {
-  const done = course.tasks.filter(t => t.done).length;
-  const percent = course.tasks.length ? Math.round(done / course.tasks.length * 100) : 0;
-  return `<article class="study-card"><div class="study-title"><div><h3>${esc(course.name)}</h3><span class="study-meta">${course.examDate ? '考试日期 ' + esc(course.examDate) : '尚未设置考试日期'}</span></div>${course.examDate ? `<span class="countdown ${examDays(course.examDate) < 0 ? 'past' : examDays(course.examDate) <= 7 ? 'soon' : ''}">${countdownLabel(course.examDate)}</span>` : ''}</div><div class="study-toolbar"><button class="danger" data-course-edit="${esc(course.id)}">编辑课程 / 考试日期</button><button class="danger" data-course-remove="${esc(course.id)}">删除课程</button></div><div class="study-progress"><span>复习进度 ${done} / ${course.tasks.length}</span><b>${percent}%</b></div><div class="progress-track" role="progressbar" aria-label="${esc(course.name)}复习进度" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div><ul class="review-list">${course.tasks.map(t => `<li class="review-item ${t.done ? 'complete' : ''}"><label><input type="checkbox" data-review-course="${esc(course.id)}" data-review-task="${esc(t.id)}" ${t.done ? 'checked' : ''}><span class="review-name">${esc(t.name)}</span></label><button class="danger" data-review-remove="${esc(t.id)}" data-review-parent="${esc(course.id)}" aria-label="删除任务 ${esc(t.name)}">删除</button></li>`).join('') || '<li class="study-empty">还没有任务，把第一项复习计划加进来吧。</li>'}</ul><form class="review-add" data-review-form="${esc(course.id)}"><input name="task" maxlength="200" required placeholder="例如：复习第 1 章并做练习" aria-label="${esc(course.name)}的新复习任务"><button class="primary">添加任务</button></form></article>`;
-}
-function openCourseEditor(id) {
-  studyEditingId = id;
-  const course = courseRows().find(c => c.id === id);
-  $('#course-form').reset();
-  $('#course-form-title').textContent = course ? '编辑课程' : '添加课程';
-  $('#course-name').value = course?.name || '';
-  $('#course-exam').value = course?.examDate || '';
-  courseDialog.showModal();
-  $('#course-name').focus();
-}
-$('#course-cancel').onclick = () => courseDialog.close();
-$('#course-form').onsubmit = event => {
-  event.preventDefault();
-  const name = $('#course-name').value.trim();
-  const examDate = $('#course-exam').value || null;
-  if (!name || examDate && !validCourseDate(examDate)) return;
-  const rows = courseRows();
-  if (studyEditingId && !rows.some(c => c.id === studyEditingId)) { toast('该课程已被另一设备删除，请重新添加。'); return; }
-  const courses = studyEditingId ? rows.map(c => c.id === studyEditingId ? { ...c, name, examDate } : c) : [...rows, { id: crypto.randomUUID(), name, examDate, tasks: [] }];
-  if (commit({ ...state, courses })) { courseDialog.close(); toast('课程已保存'); }
-};
-function handleStudyClick(event) {
-  const button = event.target.closest('button');
-  if (!button) return;
-  const data = button.dataset;
-  if (data.studyMonth) { const next = new Date(studyMonth); next.setMonth(next.getMonth() + Number(data.studyMonth)); if (next.getFullYear() >= 1 && next.getFullYear() <= 9999) { studyMonth = next; renderCourses(); } return; }
-  if (button.id === 'study-today') { studyMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); studySelectedDay = day(); renderCourses(); return; }
-  if (data.studyDate) { studySelectedDay = data.studyDate; renderCourses(); return; }
-  if (data.courseEdit) { openCourseEditor(data.courseEdit); return; }
-  if (data.courseRemove) { const course = courseRows().find(c => c.id === data.courseRemove); if (course && confirm(`删除「${course.name}」及其复习任务？`)) commit({ ...state, courses: courseRows().filter(c => c.id !== course.id) }); return; }
-  if (data.reviewRemove && confirm('删除这项复习任务？')) commit({ ...state, courses: courseRows().map(c => c.id === data.reviewParent ? { ...c, tasks: c.tasks.filter(t => t.id !== data.reviewRemove) } : c) });
-}
-function handleStudyCheck(event) {
-  const input = event.target;
-  if (!input.dataset.reviewTask) return;
-  const courses = courseRows().map(c => c.id === input.dataset.reviewCourse ? { ...c, tasks: c.tasks.map(t => t.id === input.dataset.reviewTask ? { ...t, done: input.checked } : t) } : c);
-  if (!commit({ ...state, courses })) input.checked = !input.checked;
-}
-function handleReviewSubmit(event) {
-  if (!event.target.dataset.reviewForm) return;
-  event.preventDefault();
-  const form = event.target, name = form.elements.task.value.trim();
-  if (!name) return;
-  const courses = courseRows().map(c => c.id === form.dataset.reviewForm ? { ...c, tasks: [...c.tasks, { id: crypto.randomUUID(), name, done: false }] } : c);
-  if (commit({ ...state, courses })) { const next = [...document.querySelectorAll('[data-review-form]')].find(f => f.dataset.reviewForm === form.dataset.reviewForm); next?.elements.task.focus(); }
-}
-// Refresh date-based counts when the tab becomes visible or midnight passes.
-let studyLastDay = day();
-setInterval(() => { const today = day(); if (studyLastDay !== today) { studyLastDay = today; if (tab === 'courses') renderCourses(); } }, 60000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && tab === 'courses') renderCourses(); });
+// Single-exam records remain readable; edits upgrade only the courses being saved.
+let studyMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1), studySelectedDay=day(), studyEditingId=null, studyOpenCourseId=null, studyExamEditor=null;
+const courseColors=['#8870cb','#5d9b9a','#cd9a68','#7897bc','#b97d9a'];
+function normalizeCourse(c){return Array.isArray(c.exams)?c:{id:c.id,name:c.name,tasks:c.examDate?[]:c.tasks,exams:c.examDate?[{id:c.id+'-legacy-exam',name:'考试',date:c.examDate,tasks:c.tasks}]:[]}}
+const courseRows=()=> (state.courses||[]).map(normalizeCourse);
+const dateOrdinal=value=>Date.parse(value+'T00:00:00Z')/86400000;
+const examDays=value=>dateOrdinal(value)-dateOrdinal(day());
+const courseAllTasks=c=>[...c.tasks,...c.exams.flatMap(e=>e.tasks)];
+const courseEvents=courses=>courses.flatMap(c=>c.exams.filter(e=>e.date).map(e=>({...e,courseId:c.id,courseName:c.name})));
+function countdownLabel(date){if(!date)return '日期待定';const n=examDays(date);return n>0?'还有 '+n+' 天':n===0?'今天考试':'已过 '+(-n)+' 天'}
+function countdownClass(date){return !date||examDays(date)<0?'past':examDays(date)<=7?'soon':''}
+function dateFor(y,m,d){return String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0')}
+function examItem(e){return `<div class="exam-item"><div><button class="agenda-course-link" data-course-open="${esc(e.courseId)}">${esc(e.courseName)} · ${esc(e.name)}</button><small>${esc(e.date)}</small></div><span class="countdown ${countdownClass(e.date)}">${countdownLabel(e.date)}</span></div>`}
+function renderStudyCalendar(courses){const events=courseEvents(courses),upcoming=events.filter(e=>examDays(e.date)>=0).sort((a,b)=>a.date.localeCompare(b.date));const year=studyMonth.getFullYear(),month=studyMonth.getMonth(),dates=new Date(year,month+1,0).getDate(),offset=(studyMonth.getDay()+6)%7;let calendar=['一','二','三','四','五','六','日'].map(w=>`<div class="calendar-weekday">${w}</div>`).join('')+'<div aria-hidden="true"></div>'.repeat(offset);for(let d=1;d<=dates;d++){const date=dateFor(year,month,d),exams=events.filter(e=>e.date===date);calendar+=`<button class="calendar-day ${date===day()?'today':''} ${date===studySelectedDay?'selected':''} ${exams.length?'has-exam':''}" data-study-date="${date}" aria-label="${date}${exams.length?'，考试：'+esc(exams.map(e=>e.courseName+' '+e.name).join('、')):''}" aria-pressed="${date===studySelectedDay}">${d}${exams.length?'<span class="calendar-dot"></span>':'<span style="height:4px"></span>'}</button>`}const selected=events.filter(e=>e.date===studySelectedDay);return `<div class="study-layout"><section class="study-calendar"><div class="calendar-head"><button class="outline" data-study-month="-1" aria-label="上个月">‹</button><h3>${year} 年 ${month+1} 月</h3><button class="outline" data-study-month="1" aria-label="下个月">›</button><button class="danger" id="study-today">今天</button></div><div class="calendar-grid">${calendar}</div><div class="calendar-legend">橙色标记：考试日 · 点击日期查看全部考试</div></section><section class="study-agenda"><h3>${esc(studySelectedDay)} 的考试</h3>${selected.length?selected.map(examItem).join(''):'<p class="study-empty">这一天没有考试安排。</p>'}<h3 style="margin-top:24px">接下来的考试</h3><div class="agenda-list">${upcoming.length?upcoming.map(examItem).join(''):'<p class="study-empty">暂无待考考试，进入课程添加考试吧。</p>'}</div></section></div>`}
+function courseProgress(tasks,label){const done=tasks.filter(t=>t.done).length,percent=tasks.length?Math.round(done/tasks.length*100):0;return `<div class="study-progress"><span>复习进度 ${done} / ${tasks.length}</span><b>${percent}%</b></div><div class="progress-track" role="progressbar" aria-label="${esc(label)}复习进度" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>`}
+function renderCourseTile(c){const tasks=courseAllTasks(c),upcoming=c.exams.filter(e=>e.date&&examDays(e.date)>=0).sort((a,b)=>a.date.localeCompare(b.date)),hash=[...c.id].reduce((n,ch)=>n+ch.charCodeAt(0),0);return `<article class="course-tile"><button class="course-tile-open" data-course-open="${esc(c.id)}" aria-label="打开课程 ${esc(c.name)}"><div class="course-cover" style="--course-color:${courseColors[hash%courseColors.length]}"><span class="course-cover-symbol">${esc(c.name.charAt(0))}</span><span class="course-cover-label">本学期课程</span></div><div class="course-tile-body"><h3>${esc(c.name)}</h3><div class="course-tile-meta">${c.exams.length} 场考试 · ${tasks.length} 项复习任务</div>${courseProgress(tasks,c.name)}<div class="course-next">${upcoming.length?esc(upcoming[0].name)+' · '+countdownLabel(upcoming[0].date):'点击进入，安排考试与复习 →'}</div></div></button><div class="course-tile-footer"><button class="danger" data-course-edit="${esc(c.id)}">编辑课程</button><button class="danger" data-course-remove="${esc(c.id)}">删除课程</button></div></article>`}
+function reviewChecklist(c,tasks,examId=''){return `<ul class="review-list">${tasks.map(t=>`<li class="review-item ${t.done?'complete':''}"><label><input type="checkbox" data-review-course="${esc(c.id)}" data-review-exam="${esc(examId)}" data-review-task="${esc(t.id)}" ${t.done?'checked':''}><span class="review-name">${esc(t.name)}</span></label><button class="danger" data-review-remove="${esc(t.id)}" data-review-parent="${esc(c.id)}" data-review-exam="${esc(examId)}" aria-label="删除任务 ${esc(t.name)}">删除</button></li>`).join('')||'<li class="study-empty">把复习拆成小任务，完成一项就打勾。</li>'}</ul><form class="review-add" data-review-form="${esc(c.id)}" data-review-exam="${esc(examId)}"><input name="task" maxlength="200" required placeholder="例如：复习第 1 章并做练习" aria-label="${esc(c.name)}的新复习任务"><button class="primary">添加任务</button></form>`}
+function renderExamCard(c,e){return `<article class="study-card exam-card" data-exam-id="${esc(e.id)}"><div class="study-title"><div><h3>${esc(e.name)}</h3><span class="study-meta">${e.date?'考试日期 '+esc(e.date):'考试日期待定'}</span></div><span class="countdown ${countdownClass(e.date)}">${countdownLabel(e.date)}</span></div><div class="study-toolbar"><button class="danger" data-exam-edit="${esc(e.id)}" data-exam-course="${esc(c.id)}">编辑考试</button><button class="danger" data-exam-remove="${esc(e.id)}" data-exam-course="${esc(c.id)}">删除考试</button></div>${courseProgress(e.tasks,c.name+' '+e.name)}${reviewChecklist(c,e.tasks,e.id)}</article>`}
+function renderCourses(){const courses=courseRows(),course=courses.find(c=>c.id===studyOpenCourseId);if(studyOpenCourseId&&!course)studyOpenCourseId=null;let html;if(course){const exams=course.exams.slice().sort((a,b)=>(a.date||'9999-12-31').localeCompare(b.date||'9999-12-31'));html=`<button class="outline" id="courses-back">‹ 所有课程</button><div class="study-page-heading course-detail-head"><div><h2>${esc(course.name)}</h2><span class="muted">${course.exams.length} 场考试 · 每场考试都有独立复习进度</span></div><button class="outline" id="exams-add">＋ 批量添加考试</button></div>${courseProgress(courseAllTasks(course),course.name+'全部任务')}<div class="study-cards">${exams.map(e=>renderExamCard(course,e)).join('')}</div>${exams.length?'':'<div class="study-empty">点击「批量添加考试」，一次填写小测、期中、期末等多场考试。</div>'}<details class="course-general" ${course.tasks.length?'open':''}><summary>课程通用复习任务（不属于某场考试） · ${course.tasks.length} 项</summary>${reviewChecklist(course,course.tasks)}</details>${renderStudyCalendar([course])}`}else{const soon=courseEvents(courses).filter(e=>examDays(e.date)>=0&&examDays(e.date)<=7).sort((a,b)=>a.date.localeCompare(b.date)),tasks=courses.flatMap(courseAllTasks);html=`<div class="study-page-heading"><div><h2>我的课程</h2><span class="muted">${courses.length} 门课程 · ${courses.reduce((n,c)=>n+c.exams.length,0)} 场考试 · 已完成 ${tasks.filter(t=>t.done).length} / ${tasks.length} 项任务</span></div><button class="outline" id="course-add">＋ 添加课程</button></div>${soon.length?`<div class="study-alert">近期考试提醒：${soon.map(e=>esc(e.courseName)+' / '+esc(e.name)+' · '+countdownLabel(e.date)).join('；')}</div>`:''}<div class="course-tile-grid">${courses.map(renderCourseTile).join('')}</div>${courses.length?'':'<div class="study-empty">先添加一门课，再点击课程卡片进入，安排多场考试与复习。</div>'}${renderStudyCalendar(courses)}`}$('#content').innerHTML=`<div id="study-content">${html}<p class="muted" style="margin-top:24px">修改和勾选会自动保存；登录后沿用云端同步。提醒显示在网页内。</p></div>`;if($('#course-add'))$('#course-add').onclick=()=>openCourseEditor(null);if($('#exams-add'))$('#exams-add').onclick=()=>openExamsEditor(course.id);$('#study-content').onclick=handleStudyClick;$('#study-content').onchange=handleStudyCheck;$('#study-content').onsubmit=handleReviewSubmit}
+const courseDialog=document.createElement('dialog');courseDialog.id='course-editor';courseDialog.innerHTML=`<form id="course-form"><h2 id="course-form-title">添加课程</h2><label for="course-name">课程名称</label><input id="course-name" required maxlength="100" placeholder="例如：生理学"><p class="course-dialog-note">创建后点击课程卡片，添加多场考试和复习任务。</p><div class="actions"><button type="button" class="outline" id="course-cancel">取消</button><button type="submit" class="primary">保存课程</button></div></form>`;document.body.appendChild(courseDialog);
+function openCourseEditor(id){studyEditingId=id;const c=courseRows().find(c=>c.id===id);$('#course-form').reset();$('#course-form-title').textContent=c?'编辑课程':'添加课程';$('#course-name').value=c?.name||'';courseDialog.showModal();$('#course-name').focus()}
+$('#course-cancel').onclick=()=>courseDialog.close();$('#course-form').onsubmit=event=>{event.preventDefault();const name=$('#course-name').value.trim();if(!name)return;const rows=courseRows();if(studyEditingId&&!rows.some(c=>c.id===studyEditingId)){toast('该课程已被另一设备删除，请重新添加。');return}const courses=studyEditingId?rows.map(c=>c.id===studyEditingId?{...c,name}:c):[...rows,{id:crypto.randomUUID(),name,exams:[],tasks:[]}];if(commit({...state,courses})){courseDialog.close();toast('课程已保存，点击卡片添加考试')}};
+const examsDialog=document.createElement('dialog');examsDialog.id='exams-editor';examsDialog.innerHTML=`<form id="exams-form"><h2 id="exams-form-title">一次添加多场考试</h2><p class="course-dialog-note">填写名称与日期，一次保存多场。空白行会跳过，未确定日期也可先留空。</p><div id="exam-editor-rows"></div><button type="button" class="outline" id="exam-row-add">＋ 再加一场</button><div class="actions"><button type="button" class="outline" id="exams-cancel">取消</button><button type="submit" class="primary">保存考试</button></div></form>`;document.body.appendChild(examsDialog);let editorRowNumber=0;
+function addExamEditorRow(exam=null){const row=document.createElement('div');row.className='exam-editor-row';const n=++editorRowNumber;row.innerHTML=`<div><label for="exam-name-${n}">考试名称</label><input id="exam-name-${n}" name="examName" maxlength="100" placeholder="例如：期中考试" value="${esc(exam?.name||'')}"></div><div><label for="exam-date-${n}">考试日期</label><input id="exam-date-${n}" name="examDate" type="date" min="0001-01-01" max="9999-12-31" value="${esc(exam?.date||'')}"></div><button class="danger" type="button" aria-label="移除这行考试">移除</button>`;row.querySelector('button').onclick=()=>row.remove();row.querySelectorAll('input').forEach(input=>input.oninput=()=>row.querySelectorAll('input').forEach(i=>i.setCustomValidity('')));$('#exam-editor-rows').appendChild(row)}
+function openExamsEditor(courseId,examId=null){const c=courseRows().find(c=>c.id===courseId);if(!c)return;const exam=examId?c.exams.find(e=>e.id===examId):null;if(examId&&!exam)return;studyExamEditor={courseId,examId};$('#exam-editor-rows').innerHTML='';$('#exams-form-title').textContent=examId?'编辑考试':'一次添加多场考试';$('#exam-row-add').hidden=!!examId;addExamEditorRow(exam);if(!examId){addExamEditorRow();addExamEditorRow()}examsDialog.showModal();$('#exam-editor-rows input').focus()}
+$('#exam-row-add').onclick=()=>addExamEditorRow();$('#exams-cancel').onclick=()=>examsDialog.close();$('#exams-form').onsubmit=event=>{event.preventDefault();const parent=courseRows().find(c=>c.id===studyExamEditor.courseId);if(!parent||studyExamEditor.examId&&!parent.exams.some(e=>e.id===studyExamEditor.examId)){toast('课程或考试已被另一设备删除，请重新添加。');return}const entries=[];for(const row of $('#exam-editor-rows').children){const nameInput=row.querySelector('[name=examName]'),dateInput=row.querySelector('[name=examDate]'),name=nameInput.value.trim(),date=dateInput.value||null;if(!name&&!date)continue;if(!name){nameInput.setCustomValidity('请填写考试名称');nameInput.reportValidity();return}if(date&&!validCourseDate(date)){dateInput.setCustomValidity('请填写有效日期');dateInput.reportValidity();return}entries.push({name,date})}if(!entries.length){toast('请至少填写一个考试名称');return}const courses=courseRows().map(c=>c.id!==parent.id?c:{...c,exams:studyExamEditor.examId?c.exams.map(e=>e.id===studyExamEditor.examId?{...e,...entries[0]}:e):[...c.exams,...entries.map(e=>({...e,id:crypto.randomUUID(),tasks:[]}))]});if(commit({...state,courses})){examsDialog.close();toast(studyExamEditor.examId?'考试已更新':'已添加 '+entries.length+' 场考试')}};
+function updateReviewTasks(courses,courseId,examId,transform){return courses.map(c=>c.id!==courseId?c:examId?{...c,exams:c.exams.map(e=>e.id===examId?{...e,tasks:transform(e.tasks)}:e)}:{...c,tasks:transform(c.tasks)})}
+function handleStudyClick(event){const button=event.target.closest('button');if(!button)return;const d=button.dataset;if(d.studyMonth){const next=new Date(studyMonth);next.setMonth(next.getMonth()+Number(d.studyMonth));if(next.getFullYear()>=1&&next.getFullYear()<=9999){studyMonth=next;renderCourses()}return}if(button.id==='study-today'){studyMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);studySelectedDay=day();renderCourses();return}if(d.studyDate){studySelectedDay=d.studyDate;renderCourses();return}if(d.courseOpen){studyOpenCourseId=d.courseOpen;renderCourses();return}if(button.id==='courses-back'){studyOpenCourseId=null;renderCourses();return}if(d.courseEdit){openCourseEditor(d.courseEdit);return}if(d.courseRemove){const c=courseRows().find(c=>c.id===d.courseRemove);if(c&&confirm('删除「'+c.name+'」及其全部考试和复习任务？'))commit({...state,courses:courseRows().filter(x=>x.id!==c.id)});return}if(d.examEdit){openExamsEditor(d.examCourse,d.examEdit);return}if(d.examRemove){const c=courseRows().find(c=>c.id===d.examCourse),e=c?.exams.find(e=>e.id===d.examRemove);if(e&&confirm('删除「'+e.name+'」及其复习任务？'))commit({...state,courses:courseRows().map(x=>x.id===c.id?{...x,exams:x.exams.filter(ex=>ex.id!==e.id)}:x)});return}if(d.reviewRemove&&confirm('删除这项复习任务？'))commit({...state,courses:updateReviewTasks(courseRows(),d.reviewParent,d.reviewExam,tasks=>tasks.filter(t=>t.id!==d.reviewRemove))})}
+function handleStudyCheck(event){const input=event.target;if(!input.dataset.reviewTask)return;const courses=updateReviewTasks(courseRows(),input.dataset.reviewCourse,input.dataset.reviewExam,tasks=>tasks.map(t=>t.id===input.dataset.reviewTask?{...t,done:input.checked}:t));if(!commit({...state,courses}))input.checked=!input.checked}
+function handleReviewSubmit(event){if(!event.target.dataset.reviewForm)return;event.preventDefault();const form=event.target,name=form.elements.task.value.trim();if(!name)return;const courses=updateReviewTasks(courseRows(),form.dataset.reviewForm,form.dataset.reviewExam,tasks=>[...tasks,{id:crypto.randomUUID(),name,done:false}]);if(commit({...state,courses})){const next=[...document.querySelectorAll('[data-review-form]')].find(f=>f.dataset.reviewForm===form.dataset.reviewForm&&f.dataset.reviewExam===form.dataset.reviewExam);next?.elements.task.focus()}}
+let studyLastDay=day();setInterval(()=>{const today=day();if(studyLastDay!==today){studyLastDay=today;if(tab==='courses')renderCourses()}},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tab==='courses')renderCourses()});
