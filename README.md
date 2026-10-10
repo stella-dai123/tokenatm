@@ -4,7 +4,7 @@ A personal, responsive token wallet for study and healthy activity habits.
 
 ## Publish
 
-Push this directory to a GitHub repository with a `main` branch. In the repository, open Settings → Pages → Build and deployment → Source and choose GitHub Actions. Run the Publish Token ATM workflow or push a new commit. The workflow publishes index.html, cloud-config.js, courses.js and courses.css; screenshots and documentation are excluded.
+Push this directory to a GitHub repository with a `main` branch. In the repository, open Settings → Pages → Build and deployment → Source and choose GitHub Actions. Run the Publish Token ATM workflow or push a new commit. The workflow publishes index.html, cloud-config.js, courses.js, courses.css, meal-planner.js, meal-planner.css, budget.js and budget.css; screenshots and documentation are excluded.
 
 ## Local development
 
@@ -17,3 +17,13 @@ Transactions, tasks and rewards are saved automatically in the current browser's
 ## Course revision
 
 The Course Revision tab shows Canvas-style course cards. Open a course to batch-add multiple named exams with optional dates, independent checklists and revision progress. The calendar shows all exams, including multiple exams on the same day. Existing single-exam courses are displayed through a backward-compatible adapter; their exam dates and checklist completion are preserved when edits upgrade the course to the multiple-exam format. Courses use the existing private Supabase JSON state, so no database migration is required. Exam reminders appear inside the website; push notifications are not implemented. The former Habit Progress tab was removed at the user’s request.
+
+## Weekly menus and meal rewards
+
+Under Weight Management → Weekly Menu, choose foods by category (one food per category) and adjust serving quantities. Common food values are estimates; custom foods can use package-label calories. Schedule one meal across selected weekdays in the selected week. The planner checks the total of all planned meals against the user-selected 1200 kcal daily cap, including fractional servings. This is the user's configured menu limit, not a general recommended intake.
+
+The former regular-eating task is replaced by the meal-plan reward. Only today's planned meals can be confirmed; confirmation creates matching actual intake records. All planned meals must match the day's recorded food, with no extra food records, to claim the default 20-token reward. One daily ledger key prevents repeat rewards, including rewards previously claimed through the old t5 task. The website relies on self-report and cannot verify actual food consumption. The first confirmation freezes the day's plan snapshot, so later weekly-plan edits cannot change completion eligibility or repeat a reward. Earlier snapshots and historical ledger entries remain intact.
+
+## Budget
+
+Record USD expenses with a date and category. The frontend requests the latest available USD/CNY reference rate from https://api.frankfurter.dev/v1/latest?base=USD&symbols=CNY. The ECB-backed rate is usually updated on working days and is labeled with its source date; it is not a real-time bank quote. Each expense retains its entry-time rate, so updates do not revalue historical expenses. Weekly/monthly charts show CNY totals, with USD budgets and remaining/over-budget amounts. If live FX is unavailable, a dated saved quote can be used; without a quote the app disables expense saving rather than guessing. Menu, food, reward, expense and budget data share the existing private account-state sync and require no database schema migration.
